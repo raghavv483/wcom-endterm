@@ -169,6 +169,8 @@ Questions should cover:
 4. Signal processing
 5. Modern wireless technologies
 
+IMPORTANT: Generate completely NEW and DIFFERENT questions each time. Avoid repeating questions from previous assessments.
+
 Format your response as valid JSON only:
 {
   "questions": [
@@ -193,14 +195,14 @@ The correctAnswer should be the index (0-3) of the correct option.`;
           messages: [
             {
               role: 'system',
-              content: 'You are an expert in wireless communication technology. Generate clear, accurate assessment questions. Always respond with valid JSON only.'
+              content: 'You are an expert in wireless communication technology. Generate clear, accurate assessment questions. Always respond with valid JSON only. Generate unique and varied questions each time, never repeat the same questions.'
             },
             {
               role: 'user',
               content: prompt
             }
           ],
-          temperature: 0.8,
+          temperature: 0.9,
           max_tokens: 2000,
         }),
       });
@@ -516,7 +518,7 @@ The correctAnswer should be the index (0-3) of the correct option.`;
                   {assessmentQuestions[currentQuestion]?.question}
                 </h3>
                 <RadioGroup
-                  value={selectedAnswers[currentQuestion]?.toString()}
+                  value={selectedAnswers[currentQuestion] !== undefined ? selectedAnswers[currentQuestion].toString() : ""}
                   onValueChange={(value) => handleAnswerSelect(parseInt(value))}
                 >
                   <div className="space-y-3">
