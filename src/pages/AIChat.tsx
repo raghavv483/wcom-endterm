@@ -6,6 +6,55 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Send, Sparkles, BookOpen, Lightbulb, Zap } from "lucide-react";
 
+// Format AI response text with proper styling
+const formatResponse = (text: string) => {
+  // Split into paragraphs
+  const paragraphs = text.split('\n\n').filter(p => p.trim());
+  
+  return paragraphs.map((para, idx) => {
+    const trimmed = para.trim();
+    
+    // Check if it's a bullet list
+    if (trimmed.match(/^[\*\-•]\s/m)) {
+      const items = trimmed.split('\n').filter(line => line.trim());
+      return (
+        <ul key={idx} className="space-y-2 my-3 pl-4">
+          {items.map((item, i) => (
+            <li key={i} className="flex items-start gap-2">
+              <span className="text-primary mt-1.5">•</span>
+              <span className="flex-1">{item.replace(/^[\*\-•]\s*/, '').replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')}</span>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    
+    // Check if it's a numbered list
+    if (trimmed.match(/^\d+\.\s/m)) {
+      const items = trimmed.split('\n').filter(line => line.trim());
+      return (
+        <ol key={idx} className="space-y-2 my-3 pl-4">
+          {items.map((item, i) => {
+            const cleaned = item.replace(/^\d+\.\s*/, '');
+            return (
+              <li key={i} className="flex items-start gap-2">
+                <span className="text-primary font-semibold min-w-[24px]">{i + 1}.</span>
+                <span className="flex-1" dangerouslySetInnerHTML={{ 
+                  __html: cleaned.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>') 
+                }} />
+              </li>
+            );
+          })}
+        </ol>
+      );
+    }
+    
+    // Regular paragraph with bold formatting
+    const formatted = trimmed.replace(/\*\*(.*?)\*\*/g, '<strong class="font-semibold text-foreground">$1</strong>');
+    return <p key={idx} className="mb-3 leading-relaxed" dangerouslySetInnerHTML={{ __html: formatted }} />;
+  });
+};
+
 export default function AIChat() {
   const [messages, setMessages] = useState([
     {
@@ -58,7 +107,14 @@ export default function AIChat() {
       // GROQ uses OpenAI-compatible format
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        messages: [...messages, { role: "user", content: userMessage }],
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert wireless communication tutor. Format your responses clearly with:\n- Use proper paragraphs separated by blank lines\n- Use bullet points (•) for lists\n- Use numbered lists (1., 2., 3.) for steps or sequences\n- Use **bold** for key terms and concepts\n- Keep explanations clear and well-structured\n- Break down complex topics into digestible sections"
+          },
+          ...messages,
+          { role: "user", content: userMessage }
+        ],
       }),
     })
       .then(async (res) => {
@@ -169,12 +225,18 @@ export default function AIChat() {
                   }`}
                 >
                   {message.role === "assistant" && (
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-3">
                       <Sparkles className="h-4 w-4 text-primary" />
                       <Badge variant="outline" className="text-xs">AI Tutor</Badge>
                     </div>
                   )}
-                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  <div className="text-sm">
+                    {message.role === "user" ? (
+                      <p className="leading-relaxed">{message.content}</p>
+                    ) : (
+                      <div className="space-y-1">{formatResponse(message.content)}</div>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

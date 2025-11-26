@@ -98,11 +98,45 @@ export default function LearningPaths() {
   const [assessmentComplete, setAssessmentComplete] = useState(false);
   const [recommendedPath, setRecommendedPath] = useState<typeof learningPaths[0] | null>(null);
   const [pathProgress, setPathProgress] = useState<{[key: number]: number}>({});
+  const [learningStats, setLearningStats] = useState({
+    pathsStarted: 0,
+    videosCompleted: 0,
+    learningTime: 0,
+    certificates: 0
+  });
 
   // Load progress from localStorage on mount
   useEffect(() => {
     loadProgress();
+    loadLearningStats();
   }, []);
+
+  const loadLearningStats = () => {
+    // Count paths started
+    let pathsStarted = 0;
+    learningPaths.forEach(path => {
+      const started = localStorage.getItem(`wavelearn-path-${path.id}-started`);
+      if (started === 'true') pathsStarted++;
+    });
+
+    // Count total videos completed across all paths
+    let totalVideosCompleted = 0;
+    learningPaths.forEach(path => {
+      const completed = parseInt(localStorage.getItem(`wavelearn-path-${path.id}-completed`) || '0');
+      totalVideosCompleted += completed;
+    });
+
+    // Calculate learning time (estimate: 10 minutes per video)
+    const learningMinutes = totalVideosCompleted * 10;
+    const learningHours = Math.floor(learningMinutes / 60);
+
+    setLearningStats({
+      pathsStarted,
+      videosCompleted: totalVideosCompleted,
+      learningTime: learningHours,
+      certificates: 0 // Can be implemented later
+    });
+  };
 
   const loadProgress = () => {
     const progress: {[key: number]: number} = {};
@@ -272,6 +306,8 @@ The correctAnswer should be the index (0-3) of the correct option.`;
   const startPath = (path: typeof learningPaths[0]) => {
     // Mark path as started
     localStorage.setItem(`wavelearn-path-${path.id}-started`, 'true');
+    // Reload stats to reflect the new path started
+    loadLearningStats();
     // Navigate to videos page with topic filter for this path
     navigate(`/videos?topic=${encodeURIComponent(path.topicFilter)}`);
   };
@@ -389,21 +425,21 @@ The correctAnswer should be the index (0-3) of the correct option.`;
           <h3 className="text-lg font-bold mb-4">Your Learning Stats</h3>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="text-center p-4 rounded-lg bg-muted/50">
-              <div className="text-3xl font-bold text-primary mb-1">0</div>
+              <div className="text-3xl font-bold text-primary mb-1">{learningStats.pathsStarted}</div>
               <div className="text-sm text-muted-foreground">Paths Started</div>
             </div>
             <div className="text-center p-4 rounded-lg bg-muted/50">
-              <div className="text-3xl font-bold text-primary mb-1">0</div>
+              <div className="text-3xl font-bold text-primary mb-1">{learningStats.videosCompleted}</div>
               <div className="text-sm text-muted-foreground">Videos Completed</div>
             </div>
             <div className="text-center p-4 rounded-lg bg-muted/50">
-              <div className="text-3xl font-bold text-primary mb-1">0h</div>
+              <div className="text-3xl font-bold text-primary mb-1">{learningStats.learningTime}h</div>
               <div className="text-sm text-muted-foreground">Learning Time</div>
             </div>
-            <div className="text-center p-4 rounded-lg bg-muted/50">
-              <div className="text-3xl font-bold text-primary mb-1">0</div>
+            {/* <div className="text-center p-4 rounded-lg bg-muted/50">
+              <div className="text-3xl font-bold text-primary mb-1">{learningStats.certificates}</div>
               <div className="text-sm text-muted-foreground">Certificates Earned</div>
-            </div>
+            </div> */}
           </div>
         </Card>
       </div>
