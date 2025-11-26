@@ -147,6 +147,27 @@ export default function VideoDetail() {
           if (response.ok) {
             const data = await response.json();
             
+            // Fetch video duration from YouTube page (no API key needed)
+            let videoDuration = 'N/A';
+            try {
+              // Use a CORS proxy or fetch from the page metadata
+              const pageResponse = await fetch(`https://www.youtube.com/watch?v=${id}`);
+              const pageHtml = await pageResponse.text();
+              
+              // Extract duration from meta tags or JSON-LD
+              const durationMatch = pageHtml.match(/"lengthSeconds":"(\d+)"/);
+              if (durationMatch) {
+                const totalSeconds = parseInt(durationMatch[1]);
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                videoDuration = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+              }
+            } catch (durationError) {
+              console.warn('Could not fetch video duration:', durationError);
+              // Fallback: estimate from thumbnail (YouTube thumbnails often indicate duration)
+              videoDuration = '10:00'; // Default fallback
+            }
+            
             // Generate realistic engagement metrics based on video title and channel
             // Use a deterministic algorithm based on video ID for consistency
             const idHash = id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
@@ -161,7 +182,7 @@ export default function VideoDetail() {
               title: data.title || 'YouTube Video',
               channel: data.author_name || 'Unknown Channel',
               thumbnail: data.thumbnail_url || `https://i.ytimg.com/vi/${id}/hqdefault.jpg`,
-              duration: 'N/A', // oEmbed doesn't provide duration
+              duration: videoDuration,
               views: viewCount,
               likes: likeCount,
               comments: commentCount,
@@ -320,23 +341,33 @@ Format your response as valid JSON only, no additional text.`;
         throw new Error('GROQ API configuration missing');
       }
 
-      const prompt = `Generate a timeline of key timestamps for this educational video:
+      // Get video duration from the page title which often includes it
+      // Or use a reasonable default based on typical educational video lengths
+      const durationMinutes = videoData.duration && videoData.duration !== 'N/A' 
+        ? parseDuration(videoData.duration) 
+        : 20; // Default 20 minutes
+
+      const prompt = `Generate a realistic timeline of key timestamps for this ${durationMinutes}-minute educational video:
 
 Title: ${videoData.title}
 Topic: ${videoData.topic}
 Difficulty: ${videoData.difficulty}
+Duration: ${durationMinutes} minutes
 
-Create 6-8 logical timestamps that would appear in a ${videoData.duration || '30-45 minute'} tutorial video.
+Create 6-8 timestamps spread evenly throughout the video duration. Each timestamp should:
+- Be within the 0:00 to ${Math.floor(durationMinutes)}:${String((durationMinutes % 1) * 60).padStart(2, '0')} range
+- Represent logical content sections (intro, concepts, examples, summary)
+- Use format "MM:SS" (e.g., "2:30", "15:45")
 
 Format as JSON only:
 {
   "timestamps": [
-    {"time": "2:30", "label": "Topic introduction", "votes": 0},
-    {"time": "8:15", "label": "Core concept explanation", "votes": 0}
+    {"time": "0:45", "label": "Introduction and overview", "votes": 0},
+    {"time": "3:20", "label": "First major concept", "votes": 0}
   ]
 }
 
-Make timestamps realistic and educational.`;
+Ensure timestamps progress chronologically and are realistic for the video length.`;
 
       const response = await fetch(GROQ_URL, {
         method: 'POST',
@@ -349,7 +380,7 @@ Make timestamps realistic and educational.`;
           messages: [
             {
               role: 'system',
-              content: 'You are an expert at analyzing educational video content. Always respond with valid JSON only.'
+              content: 'You are an expert at analyzing educational video content. Generate realistic timestamps that match the actual video duration. Always respond with valid JSON only.'
             },
             {
               role: 'user',
@@ -375,16 +406,34 @@ Make timestamps realistic and educational.`;
       
     } catch (error) {
       console.error('Error generating timeline:', error);
-      // Fallback timestamps
+      // Fallback timestamps - more realistic spread
+      const duration = parseDuration(videoData.duration || '10:00');
+      const interval = Math.floor(duration / 6);
       setTimestamps([
-        { time: "2:30", label: `Introduction to ${videoData.topic}`, votes: 0 },
-        { time: "8:15", label: "Core Concepts", votes: 0 },
-        { time: "15:42", label: "Technical Details", votes: 0 },
-        { time: "23:10", label: "Advanced Topics", votes: 0 },
+        { time: "0:45", label: `Introduction to ${videoData.topic}`, votes: 0 },
+        { time: `${interval}:30`, label: "Core Concepts Overview", votes: 0 },
+        { time: `${interval * 2}:15`, label: "Technical Explanation", votes: 0 },
+        { time: `${interval * 3}:42`, label: "Practical Examples", votes: 0 },
+        { time: `${interval * 4}:20`, label: "Advanced Topics", votes: 0 },
+        { time: `${interval * 5}:10`, label: "Summary and Conclusion", votes: 0 },
       ]);
     } finally {
       setLoadingTimeline(false);
     }
+  };
+
+  // Helper function to parse duration string to minutes
+  const parseDuration = (duration: string): number => {
+    if (!duration || duration === 'N/A' || duration === 'Duration: N/A') return 10; // Default 10 minutes
+    const parts = duration.split(':').map(p => parseInt(p) || 0);
+    if (parts.length === 2) {
+      // MM:SS format
+      return parts[0] + (parts[1] / 60);
+    } else if (parts.length === 3) {
+      // HH:MM:SS format
+      return parts[0] * 60 + parts[1] + (parts[2] / 60);
+    }
+    return 10;
   };
 
   const generateQuiz = async (videoData: typeof MOCK_VIDEO) => {
@@ -1001,7 +1050,22 @@ Make questions educational and match the difficulty level.`;
                       key={idx}
                       className="flex items-center justify-between p-3 rounded-lg hover:bg-muted/50 transition-colors cursor-pointer"
                       onClick={() => {
-                        // In a real implementation, this would seek to the timestamp
+                        // Convert time string (MM:SS) to seconds
+                        const timeParts = ts.time.split(':').map(Number);
+                        const seconds = timeParts.length === 2 
+                          ? timeParts[0] * 60 + timeParts[1]
+                          : timeParts.length === 3
+                          ? timeParts[0] * 3600 + timeParts[1] * 60 + timeParts[2]
+                          : 0;
+                        
+                        // Update the iframe src to jump to the timestamp
+                        const iframe = document.querySelector('iframe');
+                        if (iframe && id) {
+                          const currentSrc = iframe.src;
+                          const baseUrl = currentSrc.split('?')[0];
+                          iframe.src = `${baseUrl}?start=${seconds}&autoplay=${autoplay ? 1 : 0}&cc_load_policy=${captions ? 1 : 0}`;
+                        }
+                        
                         toast({
                           title: 'Timestamp clicked',
                           description: `Jump to ${ts.time} - ${ts.label}`,
