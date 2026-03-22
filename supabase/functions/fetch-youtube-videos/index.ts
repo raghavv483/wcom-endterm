@@ -53,8 +53,15 @@ serve(async (req) => {
     const { query, maxResults = 20, topic = "" } = await req.json();
     const YOUTUBE_API_KEY = Deno.env.get('YOUTUBE_API_KEY');
 
+    console.log('[fetch-youtube-videos] API Key exists:', !!YOUTUBE_API_KEY);
+    console.log('[fetch-youtube-videos] API Key length:', YOUTUBE_API_KEY?.length || 0);
+    console.log('[fetch-youtube-videos] API Key starts with:', YOUTUBE_API_KEY?.substring(0, 10) || 'NONE');
+    
     if (!YOUTUBE_API_KEY) {
-      throw new Error('YOUTUBE_API_KEY is not configured');
+      return new Response(JSON.stringify({ error: 'No API key found' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Build search query
@@ -63,15 +70,30 @@ serve(async (req) => {
       searchQuery += ` ${topic}`;
     }
 
-    console.log(`Searching YouTube for: ${searchQuery}`);
+    console.log('[fetch-youtube-videos] Searching for:', searchQuery);
 
     // Search for videos
     const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(searchQuery)}&maxResults=${maxResults}&key=${YOUTUBE_API_KEY}&order=relevance&relevanceLanguage=en`;
     
+    console.log('[fetch-youtube-videos] Search URL (key hidden):', searchUrl.replace(YOUTUBE_API_KEY, 'HIDDEN_KEY'));
+    
     const searchResponse = await fetch(searchUrl);
+    
+    console.log('[fetch-youtube-videos] Search response status:', searchResponse.status);
+    
     const searchData = await searchResponse.json();
+    
+    console.log('[fetch-youtube-videos] Search response body:', JSON.stringify(searchData).substring(0, 500));
+
+    if (!searchResponse.ok) {
+      return new Response(JSON.stringify({ error: searchData.error || `HTTP ${searchResponse.status}` }), {
+        status: searchResponse.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!searchData.items || searchData.items.length === 0) {
+      console.log('[fetch-youtube-videos] No items in response');
       return new Response(JSON.stringify({ videos: [] }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -84,6 +106,15 @@ serve(async (req) => {
     const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
     const statsResponse = await fetch(statsUrl);
     const statsData = await statsResponse.json();
+
+    console.log('[fetch-youtube-videos] Stats response status:', statsResponse.status);
+    
+    if (!statsResponse.ok) {
+      return new Response(JSON.stringify({ error: statsData.error || `HTTP ${statsResponse.status}` }), {
+        status: statsResponse.status,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     // Merge data and calculate scores
     const videos = searchData.items.map((item: any, index: number) => {
@@ -146,9 +177,13 @@ serve(async (req) => {
     });
 
   } catch (error) {
-    console.error('Error in fetch-youtube-videos:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(JSON.stringify({ error: errorMessage }), {
+    console.error('[fetch-youtube-videos] Error caught:', error);
+    console.error('[fetch-youtube-videos] Error type:', typeof error);
+    console.error('[fetch-youtube-videos] Error message:', error instanceof Error ? error.message : String(error));
+    console.error('[fetch-youtube-videos] Error stack:', error instanceof Error ? error.stack : 'no stack');
+    
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return new Response(JSON.stringify({ error: errorMessage, type: typeof error }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

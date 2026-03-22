@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useUser, useClerk } from "@clerk/react";
 import { 
   Home, 
   Video, 
@@ -10,9 +11,20 @@ import {
   X,
   Sun,
   Moon,
-  Radio
+  Radio,
+  User,
+  LogOut,
+  FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { ApiKeyButton } from "@/components/ApiKeyButton";
 import { cn } from "@/lib/utils";
 
 const navigation = [
@@ -20,17 +32,25 @@ const navigation = [
   { name: "Videos", href: "/videos", icon: Video },
   { name: "Learning Paths", href: "/learning-paths", icon: BookOpen },
   { name: "AI Tutor", href: "/ai-chat", icon: MessageSquare },
+  { name: "Community", href: "/community", icon: MessageSquare },
   { name: "My Collections", href: "/collections", icon: Bookmark },
+  { name: "Generate Questions", href: "/generate-questions", icon: FileText },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const location = useLocation();
+  const { user } = useUser();
+  const { signOut } = useClerk();
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
     document.documentElement.classList.toggle("dark");
+  };
+
+  const handleLogout = async () => {
+    await signOut();
   };
 
   return (
@@ -88,8 +108,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
             })}
           </nav>
 
-          {/* Theme Toggle */}
-          <div className="p-4 border-t">
+          {/* Theme Toggle & API Key */}
+          <div className="p-4 border-t space-y-2">
+            <ApiKeyButton className="w-full justify-start" />
             <Button
               variant="outline"
               className="w-full justify-start gap-3"
@@ -107,6 +128,30 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 </>
               )}
             </Button>
+            
+            {/* User Profile Menu */}
+            {user && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" className="w-full justify-start gap-3">
+                    <User className="h-5 w-5" />
+                    <span className="truncate">{user.firstName || user.emailAddresses[0]?.emailAddress}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <div className="px-2 py-1.5 text-sm">
+                    <p className="font-semibold">{user.firstName || "User"}</p>
+                    <p className="text-xs text-muted-foreground">{user.emailAddresses[0]?.emailAddress}</p>
+                  </div>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="text-red-600">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         </div>
       </aside>

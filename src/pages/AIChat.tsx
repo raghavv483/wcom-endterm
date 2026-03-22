@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { useGroqApiKey } from "@/hooks/use-groq-api-key";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -65,6 +66,7 @@ export default function AIChat() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
+  const apiKey = useGroqApiKey(); // Get API key from localStorage
 
   const quickPrompts = [
     { icon: BookOpen, text: "Explain MIMO in simple terms", color: "bg-blue-500" },
@@ -78,18 +80,14 @@ export default function AIChat() {
     const userMessage = input;
     setInput("");
 
-    // Call GROQ API (configurable via env)
-    const GROQ_URL = import.meta.env.VITE_GROQ_API_URL;
-    const GROQ_KEY = import.meta.env.VITE_GROQ_API_KEY;
-
-    if (!GROQ_URL) {
-      // Fallback message when not configured
+    // Check if API key is available
+    if (!apiKey) {
       setTimeout(() => {
         setMessages((prev) => [
           ...prev,
           {
             role: "assistant",
-            content: "GROQ API is not configured. Set VITE_GROQ_API_URL to enable real responses.",
+            content: "❌ API key not found. Please enter your Groq API key using the 'API Key' button in the sidebar.",
           },
         ]);
       }, 400);
@@ -98,31 +96,41 @@ export default function AIChat() {
 
     setLoading(true);
 
-    fetch(GROQ_URL, {
+    // Call GROQ API using the saved API key
+    const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
+    const requestBody = {
+      model: "llama-3.1-8b-instant",  // Currently available Groq model
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert wireless communication tutor. Format your responses clearly with:\n- Use proper paragraphs separated by blank lines\n- Use bullet points (•) for lists\n- Use numbered lists (1., 2., 3.) for steps or sequences\n- Use **bold** for key terms and concepts\n- Keep explanations clear and well-structured\n- Break down complex topics into digestible sections"
+        },
+        ...messages,
+        { role: "user", content: userMessage }
+      ],
+      temperature: 0.7,
+      max_tokens: 1024,
+    };
+
+    console.log('Sending request to Groq API with model:', requestBody.model);
+
+    fetch(GROQ_API_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(GROQ_KEY ? { Authorization: `Bearer ${GROQ_KEY}` } : {}),
+        "Authorization": `Bearer ${apiKey}`,
       },
-      // GROQ uses OpenAI-compatible format
-      body: JSON.stringify({
-        model: "llama-3.3-70b-versatile",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert wireless communication tutor. Format your responses clearly with:\n- Use proper paragraphs separated by blank lines\n- Use bullet points (•) for lists\n- Use numbered lists (1., 2., 3.) for steps or sequences\n- Use **bold** for key terms and concepts\n- Keep explanations clear and well-structured\n- Break down complex topics into digestible sections"
-          },
-          ...messages,
-          { role: "user", content: userMessage }
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     })
       .then(async (res) => {
+        const text = await res.text();
+        console.log('Groq API response status:', res.status);
+        console.log('Groq API response:', text);
+        
         if (!res.ok) {
-          const text = await res.text();
           throw new Error(`GROQ API error: ${res.status} ${text}`);
         }
-        return res.json();
+        return JSON.parse(text);
       })
       .then((data) => {
         // Try to robustly extract a reply from a variety of possible API shapes

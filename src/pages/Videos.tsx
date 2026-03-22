@@ -59,12 +59,40 @@ const MOCK_VIDEOS = [
   },
 ];
 
-// Local env toggle to force mock/demo videos for development: set VITE_USE_MOCK_VIDEOS=true
-const USE_MOCK_VIDEOS = import.meta.env.VITE_USE_MOCK_VIDEOS === 'true';
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
-const SUPABASE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+// YouTube API Key - using direct client-side approach
+const YOUTUBE_API_KEY = 'AIzaSyBLDJVOMKbERybAEvk-oknmoT2bxKyY9d4';
 
 const topics = ["All", "5G", "LTE", "RF", "Antennas", "IoT", "Satellite", "Bluetooth"];
+
+// Topic detection function
+function detectTopic(title: string, description: string): { topic: string; confidence: number } {
+  const topicKeywords: Record<string, string[]> = {
+    "5G": ["5g", "nr", "new radio", "5g network"],
+    "LTE": ["lte", "4g", "long term evolution"],
+    "RF": ["rf", "radio frequency", "modulation", "spectrum"],
+    "Antennas": ["antenna", "mimo", "beam", "radiation"],
+    "IoT": ["iot", "internet of things", "sensor"],
+    "Satellite": ["satellite", "orbit", "geo", "leo"],
+    "Bluetooth": ["bluetooth", "ble", "low energy"],
+  };
+
+  const text = `${title} ${description}`.toLowerCase();
+  let bestMatch = { topic: "Wireless", confidence: 0 };
+
+  for (const [topic, keywords] of Object.entries(topicKeywords)) {
+    let matches = 0;
+    for (const keyword of keywords) {
+      if (text.includes(keyword)) matches++;
+    }
+    const confidence = Math.min(95, (matches / keywords.length) * 100 + 20);
+    
+    if (matches > 0 && confidence > bestMatch.confidence) {
+      bestMatch = { topic, confidence: Math.round(confidence) };
+    }
+  }
+
+  return bestMatch;
+}
 
 export default function Videos() {
   const [searchParams] = useSearchParams();
@@ -91,94 +119,111 @@ export default function Videos() {
   const fetchVideos = async () => {
     try {
       setLoading(true);
-      // Respect local env override for development convenience
-      if (USE_MOCK_VIDEOS) {
-        setVideos(MOCK_VIDEOS);
-        setLoading(false);
-        return;
-      }
-
-      // If Supabase client config is missing, fall back to mock videos
-      if (!SUPABASE_URL || !SUPABASE_KEY) {
-        console.warn('Supabase URL or publishable key missing — using mock videos');
-        setVideos(MOCK_VIDEOS);
-        setLoading(false);
-        toast({
-          title: 'Using demo videos',
-          description: 'Supabase environment variables are not configured — showing demo videos.',
-          variant: 'default',
-        });
-        return;
-      }
       
       // Build search query based on user input and selected topic
       let searchTerm = "wireless communication tutorial";
       
       if (searchQuery.trim()) {
-        // User has entered a search - use their query
         searchTerm = searchQuery.trim();
       } else if (selectedTopic !== "All") {
-        // User selected a topic but no search query
         searchTerm = `${selectedTopic} wireless communication tutorial`;
       }
-      
-      const body = {
-        query: searchTerm,
-        topic: selectedTopic !== "All" ? selectedTopic : undefined,
-        maxResults: 25,
-      };
 
-      const { data, error } = await supabase.functions.invoke('fetch-youtube-videos', {
-        // ensure the function receives proper JSON
-        body: JSON.stringify(body),
-        headers: { 'Content-Type': 'application/json' },
+      console.log('Fetching videos for:', searchTerm);
+
+      // Call YouTube API directly from client
+      const searchUrl = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q=${encodeURIComponent(searchTerm)}&maxResults=25&key=${YOUTUBE_API_KEY}&order=relevance&relevanceLanguage=en`;
+      
+      const searchResponse = await fetch(searchUrl);
+      const searchData = await searchResponse.json();
+
+      if (!searchResponse.ok || !searchData.items || searchData.items.length === 0) {
+        console.warn('YouTube search returned no results or error');
+        setVideos(MOCK_VIDEOS);
+        setLoading(false);
+        return;
+      }
+
+      // Get video IDs for stats
+      const videoIds = searchData.items.map((item: any) => item.id.videoId).join(',');
+
+      // Fetch detailed statistics
+      const statsUrl = `https://www.googleapis.com/youtube/v3/videos?part=statistics,contentDetails&id=${videoIds}&key=${YOUTUBE_API_KEY}`;
+      const statsResponse = await fetch(statsUrl);
+      const statsData = await statsResponse.json();
+
+      if (!statsResponse.ok) {
+        console.warn('YouTube stats fetch failed, using mock videos');
+        setVideos(MOCK_VIDEOS);
+        setLoading(false);
+        return;
+      }
+
+      // Merge search results with statistics
+      const videos = searchData.items.map((item: any, index: number) => {
+        const stats = statsData.items?.[index]?.statistics || {};
+        const contentDetails = statsData.items?.[index]?.contentDetails || {};
+        
+        const views = parseInt(stats.viewCount || '0');
+        const likes = parseInt(stats.likeCount || '0');
+        const comments = parseInt(stats.commentCount || '0');
+
+        // Detect topic from title
+        const { topic: detectedTopic, confidence } = detectTopic(
+          item.snippet.title,
+          item.snippet.description || ''
+        );
+
+        // Parse duration
+        const duration = contentDetails.duration || 'PT0M0S';
+        const durationMatch = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        const hours = parseInt(durationMatch?.[1] || '0');
+        const minutes = parseInt(durationMatch?.[2] || '0');
+        const seconds = parseInt(durationMatch?.[3] || '0');
+        const formattedDuration = hours > 0 
+          ? `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`
+          : `${minutes}:${seconds.toString().padStart(2, '0')}`;
+
+        // Determine difficulty
+        let difficulty = "Beginner";
+        const titleLower = item.snippet.title.toLowerCase();
+        if (titleLower.includes("advanced") || titleLower.includes("deep dive")) {
+          difficulty = "Advanced";
+        } else if (titleLower.includes("intermediate") || views > 50000) {
+          difficulty = "Intermediate";
+        }
+
+        return {
+          id: item.id.videoId,
+          title: item.snippet.title,
+          channel: item.snippet.channelTitle,
+          thumbnail: item.snippet.thumbnails.high?.url || item.snippet.thumbnails.medium?.url,
+          duration: formattedDuration,
+          views,
+          likes,
+          comments,
+          topic: detectedTopic,
+          confidence,
+          difficulty,
+          uploadDate: item.snippet.publishedAt.split('T')[0],
+          score: (likes * 0.5 + comments * 0.3 + views * 0.2) / 1000
+        };
       });
 
-      // supabase may return an error object or the function may return { error: '...' }
-      if (error) {
-        console.error('Supabase function invoke error:', error);
-        throw error;
-      }
+      // Sort by score
+      videos.sort((a: any, b: any) => b.score - a.score);
 
-      if (data && (data as any).error) {
-        const msg = (data as any).error || 'Unknown function error';
-        console.error('Function returned error payload:', msg);
-        throw new Error(msg);
-      }
-
-      setVideos((data as any)?.videos || []);
+      console.log('Fetched', videos.length, 'videos from YouTube');
+      setVideos(videos);
     } catch (error) {
       console.error('Error fetching videos:', error);
-      const message = error instanceof Error ? error.message : String(error);
-
-      const lower = (message || '').toLowerCase();
-      const shouldFallback =
-        lower.includes('youtube_api_key') ||
-        lower.includes('failed to send a request') ||
-        lower.includes('failed to fetch') ||
-        lower.includes('network') ||
-        lower.includes('ecoff') ||
-        lower.includes('ecconnrefused') ||
-        lower.includes('timeout');
-
-      if (shouldFallback) {
-        console.warn('Edge function unavailable or missing key — using mock videos');
-        setVideos(MOCK_VIDEOS);
-        toast({
-          title: 'Using demo videos',
-          description:
-            message && message.length > 0
-              ? `Edge Function error: ${message} — showing demo videos.`
-              : 'Edge Function is unreachable — showing demo videos for development.',
-          variant: 'default',
-        });
-      } else {
-        toast({
-          title: 'Error fetching videos',
-          description: message || 'Failed to fetch videos. Please try again.',
-          variant: 'destructive',
-        });
-      }
+      // Fallback to demo videos on any error
+      setVideos(MOCK_VIDEOS);
+      toast({
+        title: 'Using demo videos',
+        description: 'Could not fetch live videos, showing demo videos instead.',
+        variant: 'default',
+      });
     } finally {
       setLoading(false);
     }
