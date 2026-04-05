@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WaveLearn - SQL Deployment Guide</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+            color: #333;
+        }
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        .step {
+            background: white;
+            padding: 25px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .step h2 {
+            margin-top: 0;
+            color: #667eea;
+        }
+        .sql-block {
+            background: #f8f9fa;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 12px;
+            line-height: 1.4;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .copy-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+        .copy-btn:hover {
+            background: #764ba2;
+        }
+        .link-btn {
+            display: inline-block;
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .link-btn:hover {
+            background: #764ba2;
+        }
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 4px;
+            margin: 20px 0;
+        }
+        code {
+            background: #f0f0f0;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🚀 WaveLearn - Database Setup</h1>
+        <p>Complete deployment of quiz system tables and policies</p>
+    </div>
+
+    <div class="step">
+        <h2>Step 1: Access Supabase Dashboard</h2>
+        <p>Go to Supabase Dashboard and open the SQL Editor:</p>
+        <a href="https://supabase.com/dashboard" class="link-btn" target="_blank">Open Supabase Dashboard</a>
+        <ol>
+            <li>Select your <strong>wcom-endterm</strong> project</li>
+            <li>Click <strong>SQL Editor</strong> in the left sidebar</li>
+            <li>Click <strong>"New Query"</strong> button</li>
+        </ol>
+    </div>
+
+    <div class="step">
+        <h2>Step 2: Create Quiz Tables</h2>
+        <p>Copy and paste the following SQL into your Supabase SQL Editor:</p>
+        <div class="sql-block" id="sql1">-- Quiz System Tables
+-- Create users table if it doesn't exist
+CREATE TABLE IF NOT EXISTS users (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) UNIQUE NOT NULL,
+  username VARCHAR(100),
+  password_hash VARCHAR(255),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  last_login TIMESTAMP,
+  role TEXT DEFAULT 'user'
+);
+
+-- Create quizzes table
+CREATE TABLE IF NOT EXISTS quizzes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create quiz_questions table
+CREATE TABLE IF NOT EXISTS quiz_questions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  question TEXT NOT NULL,
+  options TEXT[] NOT NULL,
+  correct_index INT NOT NULL CHECK (correct_index >= 0 AND correct_index < 4),
+  order_index INT DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- Create quiz_attempts table
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  score INT,
+  total_questions INT,
+  attempted_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(quiz_id, user_id)
+);
+
+-- Create follows table
+CREATE TABLE IF NOT EXISTS follows (
+  follower_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  following_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (follower_id, following_id),
+  CHECK (follower_id != following_id)
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_quizzes_admin_id ON quizzes(admin_id);
+CREATE INDEX IF NOT EXISTS idx_quizzes_created_at ON quizzes(created_at);
+CREATE INDEX IF NOT EXISTS idx_quiz_questions_quiz_id ON quiz_questions(quiz_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_quiz_id ON quiz_attempts(quiz_id);
+CREATE INDEX IF NOT EXISTS idx_quiz_attempts_user_id ON quiz_attempts(user_id);
+CREATE INDEX IF NOT EXISTS idx_follows_follower_id ON follows(follower_id);
+CREATE INDEX IF NOT EXISTS idx_follows_following_id ON follows(following_id);
+CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql1')">📋 Copy SQL</button>
+    </div>
+
+    <div class="step">
+        <h2>Step 3: Disable RLS Policies</h2>
+        <p>After the first query completes, create a new query and paste this SQL to disable RLS:</p>
+        <div class="sql-block" id="sql2">-- Disable RLS on all quiz tables
+ALTER TABLE quizzes DISABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_questions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE quiz_attempts DISABLE ROW LEVEL SECURITY;
+ALTER TABLE follows DISABLE ROW LEVEL SECURITY;</div>
+        <button class="copy-btn" onclick="copyToClipboard('sql2')">📋 Copy SQL</button>
+    </div>
+
+    <div class="step">
+        <h2>Step 4: Execute and Verify</h2>
+        <ol>
+            <li>In the SQL Editor, click <strong>"Run"</strong> or press <strong>Ctrl+Enter</strong></li>
+            <li>Wait for the query to complete (you should see <strong>"✓ All done"</strong>)</li>
+            <li>Repeat for both SQL blocks</li>
+            <li>Check the Results tab to confirm no errors</li>
+        </ol>
+    </div>
+
+    <div class="success">
+        <strong>✅ After deployment:</strong>
+        <ol>
+            <li>Refresh your browser (F5) at <code>localhost:5174</code></li>
+            <li>Go to <strong>Admin Dashboard</strong> in the navigation</li>
+            <li>Click <strong>"Create New Quiz"</strong></li>
+            <li>Start creating quizzes! 🎉</li>
+        </ol>
+    </div>
+
+    <div class="warning">
+        <strong>⚠️  Troubleshooting:</strong>
+        <ul>
+            <li>If you see "CREATE TABLE IF NOT EXISTS" errors with duplicate key violations, that's OK - the tables might already exist</li>
+            <li>Make sure both SQL blocks execute without errors in the final Results section</li>
+            <li>If RLS disable fails, the tables might not have RLS enabled - that's fine too</li>
+        </ul>
+    </div>
+
+    <script>
+        function copyToClipboard(elementId) {
+            const element = document.getElementById(elementId);
+            const text = element.textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                alert('✅ SQL copied to clipboard!\n\nNow paste it into Supabase SQL Editor');
+            }).catch(err => {
+                console.error('Failed to copy:', err);
+                // Fallback for older browsers
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+                alert('✅ SQL copied to clipboard!');
+            });
+        }
+    </script>
+</body>
+</html>

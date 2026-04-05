@@ -7,6 +7,7 @@ import { Layout } from "./components/Layout";
 import { ApiKeyProvider } from "./context/ApiKeyContext";
 import { ApiKeyModal } from "./components/ApiKeyModal";
 import ProtectedRoute from "./components/ProtectedRoute";
+import AdminProtectedRoute from "./components/AdminProtectedRoute";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import Videos from "./pages/Videos";
@@ -19,7 +20,16 @@ import Community from "./pages/Community";
 import AskQuestion from "./pages/AskQuestion";
 import QuestionDetail from "./pages/QuestionDetail";
 import PDFQuestionGenerator from "./pages/PDFQuestionGenerator";
+import Assignments from "./pages/Assignments";
+import AssignmentDetail from "./pages/AssignmentDetail";
 import NotFound from "./pages/NotFound";
+import { AdminDashboard } from "./pages/AdminDashboard";
+import { QuizBuilder } from "./components/QuizBuilder";
+import { AdminList } from "./components/AdminList";
+import AdminProfile from "./pages/AdminProfile";
+import UserQuizFeed from "./pages/UserQuizFeed";
+import QuizStats from "./pages/QuizStats";
+import { QuizAttempt } from "./components/QuizAttempt";
 
 const queryClient = new QueryClient();
 
@@ -44,6 +54,20 @@ const App = () => (
               <Route path="/community/ask" element={<ProtectedRoute><Layout><AskQuestion /></Layout></ProtectedRoute>} />
               <Route path="/community/questions/:id" element={<ProtectedRoute><Layout><QuestionDetail /></Layout></ProtectedRoute>} />
               <Route path="/generate-questions" element={<ProtectedRoute><Layout><PDFQuestionGenerator /></Layout></ProtectedRoute>} />
+              <Route path="/assignments" element={<ProtectedRoute><Layout><Assignments /></Layout></ProtectedRoute>} />
+              <Route path="/assignments/:slug" element={<ProtectedRoute><Layout><AssignmentDetail /></Layout></ProtectedRoute>} />
+              
+              {/* Quiz Routes */}
+              <Route path="/quizzes" element={<ProtectedRoute><Layout><UserQuizFeed /></Layout></ProtectedRoute>} />
+              <Route path="/quiz/:id" element={<ProtectedRoute><Layout><QuizAttempt /></Layout></ProtectedRoute>} />
+              <Route path="/quiz/:id/stats" element={<AdminProtectedRoute><Layout><QuizStats /></Layout></AdminProtectedRoute>} />
+              <Route path="/admins" element={<ProtectedRoute><Layout><AdminList /></Layout></ProtectedRoute>} />
+              <Route path="/admin/:adminId" element={<ProtectedRoute><Layout><AdminProfile /></Layout></ProtectedRoute>} />
+              
+              {/* Admin Routes */}
+              <Route path="/admin/dashboard" element={<AdminProtectedRoute><Layout><AdminDashboard /></Layout></AdminProtectedRoute>} />
+              <Route path="/admin/quiz/create" element={<AdminProtectedRoute><Layout><QuizBuilder /></Layout></AdminProtectedRoute>} />
+              
               <Route path="*" element={<NotFound />} />
             </Routes>
           </BrowserRouter>

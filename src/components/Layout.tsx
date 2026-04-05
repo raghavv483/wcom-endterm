@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useUser, useClerk } from "@clerk/react";
 import { 
@@ -14,7 +14,9 @@ import {
   Radio,
   User,
   LogOut,
-  FileText
+  FileText,
+  Brain,
+  Users
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,24 +27,45 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { ApiKeyButton } from "@/components/ApiKeyButton";
+import { useUserRole } from "@/hooks/use-user-role";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
-const navigation = [
+const baseNavigation = [
   { name: "Home", href: "/", icon: Home },
   { name: "Videos", href: "/videos", icon: Video },
   { name: "Learning Paths", href: "/learning-paths", icon: BookOpen },
   { name: "AI Tutor", href: "/ai-chat", icon: MessageSquare },
   { name: "Community", href: "/community", icon: MessageSquare },
   { name: "My Collections", href: "/collections", icon: Bookmark },
+  { name: "Assignments", href: "/assignments", icon: FileText },
   { name: "Generate Questions", href: "/generate-questions", icon: FileText },
+  { name: "Quizzes", href: "/quizzes", icon: Brain },
+  { name: "Discover Admins", href: "/admins", icon: Users },
+];
+
+const adminNavigation = [
+  { name: "Admin Dashboard", href: "/admin/dashboard", icon: Users },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
+  const adminToastShownRef = useRef(false);
   const location = useLocation();
   const { user } = useUser();
   const { signOut } = useClerk();
+  const { isAdmin, role } = useUserRole();
+
+  useEffect(() => {
+    console.log('🔐 Layout updated - isAdmin:', isAdmin, 'role:', role);
+    
+    // Only show the admin toast once per session
+    if (isAdmin && !adminToastShownRef.current) {
+      adminToastShownRef.current = true;
+      toast.success('✅ Admin access granted!');
+    }
+  }, [isAdmin]);
 
   const toggleDarkMode = () => {
     setDarkMode(!darkMode);
@@ -52,6 +75,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const handleLogout = async () => {
     await signOut();
   };
+
+  const navigation = isAdmin ? [...baseNavigation, ...adminNavigation] : baseNavigation;
 
   return (
     <div className="min-h-screen bg-background">
