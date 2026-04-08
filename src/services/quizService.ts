@@ -6,6 +6,8 @@ export interface Quiz {
   admin_id: string;
   title: string;
   description: string | null;
+  passing_percentage?: number;
+  instructions?: string | null;
   created_at: string;
   updated_at: string;
   admin_name?: string;
@@ -18,6 +20,7 @@ export interface QuizQuestion {
   options: string[];
   correct_index: number;
   order_index: number;
+  tags?: string[];
 }
 
 export interface QuizAttempt {
@@ -37,16 +40,20 @@ export interface QuizWithQuestions extends Quiz {
 export const createQuiz = async (
   adminId: string,
   title: string,
-  description: string | null = null
+  description: string | null = null,
+  passingPercentage: number = 70,
+  instructions: string | null = null
 ) => {
   try {
     console.log('📝 Creating quiz via REST API with service role key');
-    console.log('Quiz data:', { adminId, title, description });
+    console.log('Quiz data:', { adminId, title, description, passingPercentage, instructions });
     
     const payload = {
       admin_id: adminId,
       title,
       description,
+      passing_percentage: passingPercentage,
+      instructions,
     };
     
     console.log('📋 Request payload:', JSON.stringify(payload));
@@ -316,10 +323,25 @@ export const addQuizQuestion = async (
   question: string,
   options: string[],
   correctIndex: number,
-  orderIndex: number = 0
+  orderIndex: number = 0,
+  tags: string[] = []
 ) => {
   try {
     console.log('📝 Adding quiz question via REST API');
+    console.log('  Question:', question.substring(0, 50) + '...');
+    console.log('  Tags passed:', tags);
+    
+    // Build payload - ALWAYS include tags (even if empty array)
+    const payload: any = {
+      quiz_id: quizId,
+      question,
+      options,
+      correct_index: correctIndex,
+      order_index: orderIndex,
+      tags: tags && tags.length > 0 ? tags : [], // Always include tags field
+    };
+
+    console.log('  Final payload tags:', payload.tags);
     
     const response = await fetch(
       `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/quiz_questions`,
@@ -331,13 +353,7 @@ export const addQuizQuestion = async (
           'Content-Type': 'application/json',
           'Prefer': 'return=representation',
         },
-        body: JSON.stringify({
-          quiz_id: quizId,
-          question,
-          options,
-          correct_index: correctIndex,
-          order_index: orderIndex,
-        }),
+        body: JSON.stringify(payload),
       }
     );
 
@@ -348,7 +364,7 @@ export const addQuizQuestion = async (
     }
 
     const data = await response.json();
-    console.log('✅ Question added:', data[0]);
+    console.log('✅ Question added with tags:', data[0]?.tags);
     return data[0];
   } catch (error) {
     console.error('❌ Exception in addQuizQuestion:', error);
@@ -630,5 +646,457 @@ export const getQuizStats = async (quizId: string) => {
       totalAttempts: 0,
       averageScore: 0,
     };
+  }
+};
+
+// Submit individual question response
+export const submitQuestionResponse = async (
+  quizId: string,
+  questionId: string,
+  attemptId: string,
+  userId: string,
+  selectedIndex: number,
+  isCorrect: boolean
+) => {
+  try {
+    console.log('📝 Submitting question response');
+    
+    const response = await fetch(
+      `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/question_responses`,
+      {
+        method: 'POST',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation',
+        },
+        body: JSON.stringify({
+          quiz_id: quizId,
+          question_id: questionId,
+          attempt_id: attemptId,
+          user_id: userId,
+          selected_index: selectedIndex,
+          is_correct: isCorrect,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ Submit response error:', errorData);
+      throw new Error(`Failed to submit response: ${response.status}`);
+    }
+
+    const data = await response.json();
+    console.log('✅ Response submitted');
+    return data[0];
+  } catch (error) {
+    console.error('❌ Exception in submitQuestionResponse:', error);
+    throw error;
+  }
+};
+
+// Get topic stats for a quiz
+export const getTopicStats = async (quizId: string) => {
+  try {
+    console.log('📊 Fetching topic stats for quiz:', quizId);
+    
+    const encodedQuizId = encodeURIComponent(quizId);
+    
+    // Step 1: Get all questions with their tags and correct answers
+    console.log('📥 Step 1: Fetching questions...');
+    const questionsResponse = await fetch(
+      `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/quiz_questions?quiz_id=eq.${encodedQuizId}`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!questionsResponse.ok) {
+      console.warn('⚠️ Could not fetch questions');
+      return [];
+    }
+
+    const questions = await questionsResponse.json() || [];
+    console.log(`✅ Questions fetched: ${questions.length}`);
+
+    // Filter questions that have tags
+    const questionsWithTags = questions.filter((q: any) => q.tags && q.tags.length > 0);
+    console.log(`✅ Questions with tags: ${questionsWithTags.length}`);
+
+    if (questionsWithTags.length === 0) {
+      console.log('ℹ️ No questions with tags found');
+      return [];
+    }
+
+    // Step 2: Get all responses for this quiz
+    console.log('📥 Step 2: Fetching responses...');
+    let responses: any[] = [];
+    try {
+      const responsesResponse = await fetch(
+        `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/question_responses?quiz_id=eq.${encodedQuizId}`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (responsesResponse.ok) {
+        responses = await responsesResponse.json() || [];
+        console.log(`✅ Responses fetched: ${responses.length}`);
+      } else {
+        console.warn('⚠️ Could not fetch responses - table may not exist yet');
+        return [];
+      }
+    } catch (error) {
+      console.warn('⚠️ Error fetching responses:', error);
+      return [];
+    }
+
+    if (responses.length === 0) {
+      console.log('ℹ️ No responses yet - wait for users to complete quizzes');
+      return [];
+    }
+
+    // Step 3: Calculate topic statistics
+    console.log('📊 Step 3: Calculating topic statistics...');
+    const topicStats: { [key: string]: { correct: number; total: number } } = {};
+
+    // For each question with tags
+    questionsWithTags.forEach((question: any) => {
+      // Get all responses for this question
+      const questionResponses = responses.filter((r: any) => r.question_id === question.id);
+      
+      if (questionResponses.length > 0) {
+        // Count correct responses
+        const correctCount = questionResponses.filter((r: any) => r.is_correct).length;
+        
+        // Add to each tag's stats
+        question.tags.forEach((tag: string) => {
+          if (!topicStats[tag]) {
+            topicStats[tag] = { correct: 0, total: 0 };
+          }
+          topicStats[tag].total += questionResponses.length;
+          topicStats[tag].correct += correctCount;
+        });
+
+        console.log(`Question "${question.question.substring(0, 30)}..." - Tags: ${question.tags.join(', ')} - Correct: ${correctCount}/${questionResponses.length}`);
+      }
+    });
+
+    // Convert to array with percentages
+    const result = Object.entries(topicStats).map(([topic, stats]) => ({
+      topic,
+      correct: stats.correct,
+      total: stats.total,
+      percentage: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0,
+    }));
+
+    console.log('✅ Final topic stats:', result);
+    return result.sort((a, b) => b.percentage - a.percentage);
+  } catch (error) {
+    console.error('❌ Exception in getTopicStats:', error);
+    return [];
+  }
+};
+
+// Get all unique topics for a quiz
+export const getQuizTopics = async (quizId: string) => {
+  try {
+    console.log('📊 Fetching topics for quiz:', quizId);
+    
+    const encodedQuizId = encodeURIComponent(quizId);
+    
+    const response = await fetch(
+      `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/quiz_questions?quiz_id=eq.${encodedQuizId}&select=tags`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch questions: ${response.status}`);
+    }
+
+    const questions = await response.json() || [];
+    
+    // Collect all unique topics
+    const topics = new Set<string>();
+    questions.forEach((question: any) => {
+      if (question.tags && Array.isArray(question.tags)) {
+        question.tags.forEach((tag: string) => topics.add(tag));
+      }
+    });
+
+    return Array.from(topics).sort();
+  } catch (error) {
+    console.error('❌ Exception in getQuizTopics:', error);
+    return [];
+  }
+};
+
+// Get user's attempt results with question details
+export const getUserAttemptResults = async (quizId: string, userId: string) => {
+  try {
+    console.log('📊 Fetching user attempt results:', { quizId, userId });
+    
+    const encodedQuizId = encodeURIComponent(quizId);
+    const encodedUserId = encodeURIComponent(userId);
+
+    // Get the quiz with questions
+    const quiz = await getQuizWithQuestions(quizId);
+
+    // Get user's attempt
+    const attemptResponse = await fetch(
+      `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/quiz_attempts?quiz_id=eq.${encodedQuizId}&user_id=eq.${encodedUserId}&select=*`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!attemptResponse.ok) {
+      throw new Error(`Failed to fetch attempt: ${attemptResponse.status}`);
+    }
+
+    const attempts = await attemptResponse.json() || [];
+    if (attempts.length === 0) return null;
+
+    const attempt = attempts[0];
+    const attemptId = attempt.id;
+
+    // Try to get individual responses
+    let responses: any[] = [];
+    try {
+      const responsesResponse = await fetch(
+        `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/question_responses?attempt_id=eq.${encodeURIComponent(attemptId)}&select=*`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (responsesResponse.ok) {
+        responses = await responsesResponse.json() || [];
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not fetch individual responses:', error);
+    }
+
+    // Build detailed results with question info
+    const detailedResults = quiz.questions.map((question) => {
+      const response = responses.find((r: any) => r.question_id === question.id);
+      return {
+        questionId: question.id,
+        questionText: question.question,
+        options: question.options,
+        correctIndex: question.correct_index,
+        userSelectedIndex: response?.selected_index ?? -1,
+        isCorrect: response?.is_correct ?? false,
+        tags: question.tags || [],
+      };
+    });
+
+    return {
+      attempt,
+      quiz,
+      detailedResults,
+    };
+  } catch (error) {
+    console.error('❌ Exception in getUserAttemptResults:', error);
+    return null;
+  }
+};
+
+// Get all responses for a quiz (admin view)
+export const getQuizResponses = async (quizId: string) => {
+  try {
+    console.log('📊 Fetching all quiz responses:', quizId);
+    
+    const encodedQuizId = encodeURIComponent(quizId);
+
+    // Get quiz with questions
+    const quiz = await getQuizWithQuestions(quizId);
+
+    // Try to get all responses for this quiz
+    let responses: any[] = [];
+    try {
+      const responsesResponse = await fetch(
+        `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/question_responses?quiz_id=eq.${encodedQuizId}&select=*`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (responsesResponse.ok) {
+        responses = await responsesResponse.json() || [];
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not fetch responses:', error);
+    }
+
+    // Group responses by user and question
+    const responsesByUser: { [userId: string]: any[] } = {};
+    const responsesByQuestion: { [questionId: string]: any[] } = {};
+
+    responses.forEach((response) => {
+      if (!responsesByUser[response.user_id]) {
+        responsesByUser[response.user_id] = [];
+      }
+      responsesByUser[response.user_id].push(response);
+
+      if (!responsesByQuestion[response.question_id]) {
+        responsesByQuestion[response.question_id] = [];
+      }
+      responsesByQuestion[response.question_id].push(response);
+    });
+
+    return {
+      quiz,
+      responses,
+      responsesByUser,
+      responsesByQuestion,
+      totalResponses: responses.length,
+    };
+  } catch (error) {
+    console.error('❌ Exception in getQuizResponses:', error);
+    return {
+      quiz: null,
+      responses: [],
+      responsesByUser: {},
+      responsesByQuestion: {},
+      totalResponses: 0,
+    };
+  }
+};
+
+// Get responses for a specific question (admin view)
+export const getQuestionResponses = async (questionId: string) => {
+  try {
+    console.log('📊 Fetching responses for question:', questionId);
+    
+    const encodedQuestionId = encodeURIComponent(questionId);
+
+    let responses: any[] = [];
+    try {
+      const responsesResponse = await fetch(
+        `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/question_responses?question_id=eq.${encodedQuestionId}&select=*`,
+        {
+          method: 'GET',
+          headers: {
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+            'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+            'Content-Type': 'application/json',
+          },
+        }
+      );
+
+      if (responsesResponse.ok) {
+        responses = await responsesResponse.json() || [];
+      }
+    } catch (error) {
+      console.warn('⚠️ Could not fetch responses:', error);
+    }
+
+    // Calculate stats
+    const correct = responses.filter((r) => r.is_correct).length;
+    const total = responses.length;
+    const accuracy = total > 0 ? Math.round((correct / total) * 100) : 0;
+
+    // Count answer distribution
+    const answerDistribution: { [key: number]: number } = {};
+    responses.forEach((response) => {
+      const idx = response.selected_index;
+      if (idx !== null && idx !== undefined) {
+        answerDistribution[idx] = (answerDistribution[idx] || 0) + 1;
+      }
+    });
+
+    return {
+      responses,
+      correct,
+      total,
+      accuracy,
+      answerDistribution,
+    };
+  } catch (error) {
+    console.error('❌ Exception in getQuestionResponses:', error);
+    return {
+      responses: [],
+      correct: 0,
+      total: 0,
+      accuracy: 0,
+      answerDistribution: {},
+    };
+  }
+};
+
+// Get user names for a list of user IDs
+export const getUserNames = async (userIds: string[]) => {
+  try {
+    if (!userIds || userIds.length === 0) return {};
+
+    console.log('👥 Fetching user names for:', userIds.length, 'users');
+    
+    // Build query for all user IDs
+    const userIdList = userIds.map(id => encodeURIComponent(id)).join('&id=eq.');
+    
+    const response = await fetch(
+      `https://vhtlioeeqkkcsycgadcj.supabase.co/rest/v1/users?id=eq.${userIdList}&select=id,username`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY || '',
+          'Authorization': `Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZodGxpb2VlcWtrY3N5Y2dhZGNqIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MzQ4NzYyNywiZXhwIjoyMDg5MDYzNjI3fQ.k3qtd376PvGJRlrELuGxaxNaLxg62hzYvEgwIE4oTlw`,
+          'Content-Type': 'application/json',
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.warn('⚠️ Failed to fetch user names');
+      return {};
+    }
+
+    const users = await response.json() || [];
+    
+    // Create map of user_id to username
+    const userMap: { [key: string]: string } = {};
+    users.forEach((user: any) => {
+      userMap[user.id] = user.username || user.id;
+    });
+
+    return userMap;
+  } catch (error) {
+    console.error('❌ Error fetching user names:', error);
+    return {};
   }
 };

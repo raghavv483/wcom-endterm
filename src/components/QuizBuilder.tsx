@@ -16,6 +16,7 @@ interface QuestionInput {
   question: string;
   options: [string, string, string, string];
   correctIndex: number;
+  tags: string[];
 }
 
 export function QuizBuilder() {
@@ -24,6 +25,8 @@ export function QuizBuilder() {
   const [loading, setLoading] = useState(false);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [passingPercentage, setPassingPercentage] = useState(70);
+  const [instructions, setInstructions] = useState('');
   const [questions, setQuestions] = useState<QuestionInput[]>([]);
   const [expandedQuestion, setExpandedQuestion] = useState<string | null>(null);
 
@@ -33,6 +36,7 @@ export function QuizBuilder() {
       question: '',
       options: ['', '', '', ''],
       correctIndex: 0,
+      tags: [],
     };
     setQuestions([...questions, newQuestion]);
     setExpandedQuestion(newQuestion.id);
@@ -57,6 +61,37 @@ export function QuizBuilder() {
       questions.map((q) =>
         q.id === questionId
           ? { ...q, options: q.options.map((o, i) => (i === optionIndex ? value : o)) as [string, string, string, string] }
+          : q
+      )
+    );
+  };
+
+  const addTag = (questionId: string, tag: string) => {
+    const trimmedTag = tag.trim();
+    console.log(`🏷️ Adding tag to question ${questionId}:`, trimmedTag);
+    
+    if (!trimmedTag) {
+      console.warn('⚠️ Tag is empty');
+      return;
+    }
+    
+    setQuestions(
+      questions.map((q) => {
+        if (q.id === questionId && !q.tags.includes(trimmedTag)) {
+          console.log(`✅ Tag added! Question now has tags:`, [...q.tags, trimmedTag]);
+          return { ...q, tags: [...q.tags, trimmedTag] };
+        }
+        return q;
+      })
+    );
+  };
+
+  const removeTag = (questionId: string, tagToRemove: string) => {
+    console.log(`❌ Removing tag from question ${questionId}:`, tagToRemove);
+    setQuestions(
+      questions.map((q) =>
+        q.id === questionId
+          ? { ...q, tags: q.tags.filter((t) => t !== tagToRemove) }
           : q
       )
     );
@@ -93,18 +128,26 @@ export function QuizBuilder() {
 
     setLoading(true);
     try {
-      // Create quiz
-      const quiz = await createQuiz(userId, title, description || null);
+      // Log questions before submission
+      console.log('📝 Questions to submit:', questions);
+      questions.forEach((q, idx) => {
+        console.log(`  Q${idx + 1} - "${q.question.substring(0, 30)}..." - Tags: ${JSON.stringify(q.tags)}`);
+      });
+
+      // Create quiz with pass criteria
+      const quiz = await createQuiz(userId, title, description || null, passingPercentage, instructions || null);
 
       // Add all questions
       for (let i = 0; i < questions.length; i++) {
         const q = questions[i];
+        console.log(`✏️ Submitting Q${i + 1} with tags:`, q.tags);
         await addQuizQuestion(
           quiz.id,
           q.question,
           q.options,
           q.correctIndex,
-          i
+          i,
+          q.tags
         );
       }
 
@@ -150,6 +193,34 @@ export function QuizBuilder() {
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Describe what this quiz is about..."
               className="mt-1 min-h-24"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="passing">Passing Percentage (%)</Label>
+              <Input
+                id="passing"
+                type="number"
+                min="0"
+                max="100"
+                value={passingPercentage}
+                onChange={(e) => setPassingPercentage(Math.max(0, Math.min(100, parseInt(e.target.value) || 0)))}
+                placeholder="70"
+                className="mt-1"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Students need {passingPercentage}% to pass</p>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="instructions">Instructions for Students</Label>
+            <Textarea
+              id="instructions"
+              value={instructions}
+              onChange={(e) => setInstructions(e.target.value)}
+              placeholder="Additional instructions or guidelines for taking this quiz..."
+              className="mt-1 min-h-20"
             />
           </div>
         </CardContent>
@@ -247,6 +318,61 @@ export function QuizBuilder() {
                           />
                         </div>
                       ))}
+                    </div>
+
+                    <div className="space-y-2 border-t pt-4">
+                      <Label htmlFor={`tags-${question.id}`}>Topic Tags</Label>
+                      <div className="bg-blue-50 p-3 rounded text-sm text-blue-800 mb-2">
+                        Current tags: <strong>{question.tags.length > 0 ? question.tags.join(', ') : 'None'}</strong>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input
+                          id={`tags-${question.id}`}
+                          placeholder="Type tag and press Enter (e.g., a, b, Python)"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              const value = (e.target as HTMLInputElement).value;
+                              console.log('🏷️ ENTER pressed - Tag value:', value);
+                              addTag(question.id, value);
+                              (e.target as HTMLInputElement).value = '';
+                            }
+                          }}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            const input = document.getElementById(`tags-${question.id}`) as HTMLInputElement;
+                            console.log('🔘 BUTTON clicked - Input value:', input?.value);
+                            if (input && input.value) {
+                              addTag(question.id, input.value);
+                              input.value = '';
+                            } else {
+                              console.warn('⚠️ No input value!');
+                            }
+                          }}
+                        >
+                          <Plus className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      {question.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {question.tags.map((tag) => (
+                            <Badge key={tag} variant="outline" className="cursor-pointer hover:bg-destructive hover:text-destructive-foreground"
+                              onClick={() => removeTag(question.id, tag)}
+                            >
+                              {tag} ✕
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Press Enter or click + to add tags. Click tags to remove them.
+                      </p>
                     </div>
 
                     <div className="bg-muted p-3 rounded text-sm text-muted-foreground">

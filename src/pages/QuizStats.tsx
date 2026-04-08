@@ -4,8 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
-import { Loader2, ArrowLeft, Users, TrendingUp, Award } from 'lucide-react';
-import { getQuizWithQuestions, getAttemptsByQuiz, type Quiz } from '@/services/quizService';
+import { Loader2, ArrowLeft, Users, TrendingUp, Award, TrendingDown, CheckCircle2, AlertCircle } from 'lucide-react';
+import { getQuizWithQuestions, getAttemptsByQuiz, getTopicStats, type Quiz } from '@/services/quizService';
 
 interface AttemptStats {
   user_id: string;
@@ -14,12 +14,20 @@ interface AttemptStats {
   attempted_at: string;
 }
 
+interface TopicStat {
+  topic: string;
+  correct: number;
+  total: number;
+  percentage: number;
+}
+
 export default function QuizStats() {
   const { id: quizId } = useParams<{ id: string }>();
   const navigate = useNavigate();
 
   const [quiz, setQuiz] = useState<Quiz | null>(null);
   const [attempts, setAttempts] = useState<AttemptStats[]>([]);
+  const [topicStats, setTopicStats] = useState<TopicStat[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -38,6 +46,11 @@ export default function QuizStats() {
         const attemptsData = await getAttemptsByQuiz(quizId);
         console.log('✅ Attempts loaded:', attemptsData.length);
         setAttempts(attemptsData as AttemptStats[]);
+
+        // Fetch topic stats
+        const topicStatsData = await getTopicStats(quizId);
+        console.log('📊 Topic stats loaded:', topicStatsData);
+        setTopicStats(topicStatsData);
       } catch (error) {
         console.error('❌ Error loading stats:', error);
         toast.error('Failed to load quiz stats');
@@ -148,13 +161,168 @@ export default function QuizStats() {
         </Card>
       </div>
 
-      {/* Attempts Table */}
+      {/* Topic Analysis - Always Show */}
       <div className="space-y-4">
         <div>
-          <h2 className="text-2xl font-bold">User Attempts</h2>
+          <h2 className="text-2xl font-bold">Topic Performance Analysis</h2>
           <p className="text-sm text-muted-foreground mt-1">
-            Detailed breakdown of each user's quiz attempt
+            Strong and weak topics based on user responses
           </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Strong Topics */}
+          <Card className="bg-green-50 border-green-200">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2 text-green-900">
+                <CheckCircle2 className="w-5 h-5" />
+                Strong Topics
+              </CardTitle>
+              <CardDescription className="text-green-800">
+                Topics with high accuracy rates (≥70%)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {topicStats.length > 0 && topicStats.filter(t => t.percentage >= 70).length > 0 ? (
+                  topicStats
+                    .filter(t => t.percentage >= 70)
+                    .sort((a, b) => b.percentage - a.percentage)
+                    .map((topic) => (
+                      <div key={topic.topic} className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-green-900">{topic.topic}</p>
+                          <p className="text-xs text-green-700">
+                            {topic.correct}/{topic.total} correct
+                          </p>
+                        </div>
+                        <Badge className="bg-green-200 text-green-900">
+                          {topic.percentage}%
+                        </Badge>
+                      </div>
+                    ))
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-green-700">
+                      {topicStats.length === 0 
+                        ? '📌 Topics will appear after you add tags to questions and users complete the quiz'
+                        : 'No strong topics yet - keep improving!'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Weak Topics */}
+          <Card className="bg-red-50 border-red-200">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2 text-red-900">
+                <AlertCircle className="w-5 h-5" />
+                Weak Topics
+              </CardTitle>
+              <CardDescription className="text-red-800">
+                Topics with low accuracy rates (&lt;70%)
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3">
+                {topicStats.length > 0 && topicStats.filter(t => t.percentage < 70).length > 0 ? (
+                  topicStats
+                    .filter(t => t.percentage < 70)
+                    .sort((a, b) => a.percentage - b.percentage)
+                    .map((topic) => (
+                      <div key={topic.topic} className="flex items-center justify-between">
+                        <div className="flex-1">
+                          <p className="font-medium text-red-900">{topic.topic}</p>
+                          <p className="text-xs text-red-700">
+                            {topic.correct}/{topic.total} correct
+                          </p>
+                        </div>
+                        <Badge className="bg-red-200 text-red-900">
+                          {topic.percentage}%
+                        </Badge>
+                      </div>
+                    ))
+                ) : (
+                  <div className="text-center py-6">
+                    <p className="text-sm text-red-700">
+                      {topicStats.length === 0 
+                        ? '📌 Topics will appear after you add tags to questions and users complete the quiz'
+                        : 'All topics are strong! 🎉'}
+                    </p>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Topic Progress Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Topic Performance Overview</CardTitle>
+            <CardDescription>
+              Accuracy rate for each topic
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {topicStats.length === 0 ? (
+              <div className="text-center py-8">
+                <p className="text-muted-foreground">
+                  💡 <strong>How to enable topic analytics:</strong>
+                </p>
+                <ol className="text-sm text-muted-foreground mt-3 space-y-2 text-left max-w-md mx-auto">
+                  <li>1. Add tags (topics) to your quiz questions when creating them</li>
+                  <li>2. Apply database migration in Supabase SQL Editor</li>
+                  <li>3. Users complete the quiz</li>
+                  <li>4. Topic performance data will appear here automatically</li>
+                </ol>
+              </div>
+            ) : (
+              topicStats.map((topic) => {
+                const isStrong = topic.percentage >= 70;
+                return (
+                  <div key={topic.topic} className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="font-medium text-sm">{topic.topic}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {topic.percentage}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-muted rounded-full h-2">
+                      <div
+                        className={`h-2 rounded-full transition-all ${
+                          isStrong
+                            ? 'bg-green-500'
+                            : 'bg-red-500'
+                        }`}
+                        style={{ width: `${topic.percentage}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Attempts Table */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold">User Attempts</h2>
+            <p className="text-sm text-muted-foreground mt-1">
+              Detailed breakdown of each user's quiz attempt
+            </p>
+          </div>
+          <Button
+            onClick={() => navigate(`/quiz/${quizId}/responses`)}
+            variant="outline"
+          >
+            View Detailed Responses
+          </Button>
         </div>
 
         {attempts.length === 0 ? (

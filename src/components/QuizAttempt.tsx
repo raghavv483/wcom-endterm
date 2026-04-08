@@ -10,6 +10,7 @@ import {
   getQuizWithQuestions,
   submitQuizAttempt,
   getUserAttemptForQuiz,
+  submitQuestionResponse,
   type QuizWithQuestions,
 } from '@/services/quizService';
 
@@ -127,20 +128,47 @@ export function QuizAttempt() {
 
     setSubmitting(true);
     try {
-      // Calculate score
+      // Calculate score first
       let correctCount = 0;
-      quiz.questions.forEach((question, index) => {
+      for (let index = 0; index < quiz.questions.length; index++) {
+        const question = quiz.questions[index];
         if (answers[index] === question.correct_index) {
           correctCount++;
         }
-      });
+      }
 
-      // Submit attempt
-      await submitQuizAttempt(quizId!, userId, correctCount, quiz.questions.length);
+      // Submit attempt with correct score
+      const attempt = await submitQuizAttempt(quizId!, userId, correctCount, quiz.questions.length);
 
       setScore(correctCount);
       setShowResults(true);
       toast.success('Quiz submitted successfully!');
+
+      // Try to submit individual responses in the background (optional)
+      // This won't fail the quiz submission if question_responses table doesn't exist
+      try {
+        for (let index = 0; index < quiz.questions.length; index++) {
+          const question = quiz.questions[index];
+          const isCorrect = answers[index] === question.correct_index;
+          
+          try {
+            await submitQuestionResponse(
+              quizId!,
+              question.id,
+              attempt.id,
+              userId,
+              answers[index],
+              isCorrect
+            );
+          } catch (error) {
+            console.warn(`Failed to submit response for question ${index + 1}:`, error);
+            // Continue with other responses even if one fails
+          }
+        }
+      } catch (error) {
+        console.warn('Response tracking not available yet:', error);
+        // Responses are optional - don't fail the submission
+      }
     } catch (error) {
       console.error('Error submitting quiz:', error);
       toast.error('Failed to submit quiz');
@@ -234,12 +262,21 @@ export function QuizAttempt() {
               })}
             </div>
 
-            <Button
-              onClick={() => navigate('/quizzes')}
-              className="w-full"
-            >
-              Back to Quizzes
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={() => navigate(`/quiz/${quizId}/attempt/review`)}
+                className="flex-1"
+              >
+                View Detailed Results
+              </Button>
+              <Button
+                onClick={() => navigate('/quizzes')}
+                variant="outline"
+                className="flex-1"
+              >
+                Back to Quizzes
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>

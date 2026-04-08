@@ -29,6 +29,8 @@ import { AdminList } from "./components/AdminList";
 import AdminProfile from "./pages/AdminProfile";
 import UserQuizFeed from "./pages/UserQuizFeed";
 import QuizStats from "./pages/QuizStats";
+import QuizAttemptReview from "./pages/QuizAttemptReview";
+import QuizResponsesAdmin from "./pages/QuizResponsesAdmin";
 import { QuizAttempt } from "./components/QuizAttempt";
 
 const queryClient = new QueryClient();
@@ -60,7 +62,9 @@ const App = () => (
               {/* Quiz Routes */}
               <Route path="/quizzes" element={<ProtectedRoute><Layout><UserQuizFeed /></Layout></ProtectedRoute>} />
               <Route path="/quiz/:id" element={<ProtectedRoute><Layout><QuizAttempt /></Layout></ProtectedRoute>} />
+              <Route path="/quiz/:id/attempt/review" element={<ProtectedRoute><Layout><QuizAttemptReview /></Layout></ProtectedRoute>} />
               <Route path="/quiz/:id/stats" element={<AdminProtectedRoute><Layout><QuizStats /></Layout></AdminProtectedRoute>} />
+              <Route path="/quiz/:id/responses" element={<AdminProtectedRoute><Layout><QuizResponsesAdmin /></Layout></AdminProtectedRoute>} />
               <Route path="/admins" element={<ProtectedRoute><Layout><AdminList /></Layout></ProtectedRoute>} />
               <Route path="/admin/:adminId" element={<ProtectedRoute><Layout><AdminProfile /></Layout></ProtectedRoute>} />
               
